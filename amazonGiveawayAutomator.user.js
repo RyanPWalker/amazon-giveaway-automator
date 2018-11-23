@@ -2,7 +2,7 @@
 //
 // ==UserScript==
 // @name         Amazon Giveaway Bot
-// @version      1.1
+// @version      1.2
 // @author       Ryan Walker
 // @updateURL    https://github.com/RyanPWalker/amazon-giveaway-automator/raw/master/amazonGiveawayAutomator.user.js
 // @description  Automates Amazon giveaway entries
@@ -27,8 +27,6 @@
     "	style=\"font-family: Roboto,\\'Helvetica Neue\\',Helvetica,Arial,sans-serif;font-size: 100%;padding: 5px; overflow: hidden; width: 400px; color: white; background-color: #232f3e; border-color: #232f3e; border-width: 2px; border-style: solid; z-index: 9999; text-align: center; display: flex; flex-direction: column; justify-content: center;\">\n" +
     "	<h3 class=\"textColor\" style=\"padding-top: 0; margin-top: 0;\">Amazon Giveaway Automator</h3>\n" +
     "\n" +
-    "		<div><span for=\"allowVideos\">Allow Videos: </span><input id=\"allowVideos\" name=\"allowVideos\" type=\"checkbox\"></input></div>\n" +
-    "		<div><label for=\"userEmail\">Enter your email address to receive an email when you win:</label><input id=\"userEmail\" name=\"userEmail\" type=\"text\" placeholdertype=\"Enter your email here\"></input></div>\n" +
     "		<span id=\"numEntered\"></span>\n" +
     "		<span id=\"currentSessionGiveawaysEntered\"></span>\n" +
     "		<button id=\"run\">Start Automator (opens in new window)</button>\n" +
@@ -39,9 +37,6 @@
 
   if(!GM_getValue("giveawaysEntered")) {
     GM_setValue("giveawaysEntered", 0)
-  }
-  if(!GM_getValue("userEmail")) {
-    GM_setValue("userEmail", "ryanissuccess@gmail.com")
   }
 
   if(!GM_getValue("running")){
@@ -57,10 +52,6 @@
         document.getElementById("run").style.display = (GM_getValue("running") ? 'none' : 'block');
         document.getElementById("disable").style.display = (GM_getValue("running") ? 'block' : 'none');
         document.getElementById("currentSessionGiveawaysEntered").style.display = (GM_getValue("running") ? 'block' : 'none');
-        document.getElementById("allowVideos").checked = GM_getValue("allowVideos");
-        if(GM_getValue("userEmail")){
-            document.getElementById("userEmail").value = GM_getValue("userEmail");
-        }
         document.getElementById("numEntered").innerHTML = GM_getValue("giveawaysEntered") + ' Total Giveaways Entered';
         document.getElementById("currentSessionGiveawaysEntered").style.display = 'none'
 
@@ -73,9 +64,6 @@
             GM_setValue("currentIdx", 0)
             GM_setValue("mainPageUrl", window.location.href)
             //GM_setValue("pageId", 1);
-            if(document.getElementById("userEmail").value.includes("@"))
-                GM_setValue("userEmail", document.getElementById("userEmail").value)
-            GM_setValue("allowVideos", document.getElementById("allowVideos").checked)
 
             document.getElementById("run").style.display = 'none';
             document.getElementById("disable").style.display = 'block';
@@ -168,17 +156,15 @@
     setInterval( () => {
       // if giveaway has video requirement, click the continue entry button first
       if((document.getElementById("giveaway-video-watch-text") || (document.getElementById("giveaway-youtube-video-watch-text") && !document.querySelector(".continue_button_inner").disabled))){
-        if(GM_getValue("allowVideos")){
           document.querySelector(".continue_button_inner").click();
           handleSubmit()
-        }
-        else {
-          processGiveaways()
-        }
       }
       // don't enter givaways with follow requirements
       else if (document.getElementById('en_fo_follow-announce')) {
         processGiveaways()
+      }
+      else if (document.getElementById('ne_sub_subscribe-announce')) {
+        document.querySelector('input.a-button-input').click();
       }
       // otherwise, enter giveaway immediately
       else {
@@ -268,33 +254,28 @@
         }
         // handle giveaways with video requirement
         else if (document.getElementById("giveaway-youtube-video-watch-text") || document.getElementById("giveaway-video-watch-text") || document.getElementById('enter-youtube-video-button')){
-          if(GM_getValue("allowVideos")){
-            // Mute a singular HTML5 element
-            function muteMe(elem) {
-              elem.muted = true;
-            }
-            // Try to mute all video and audio elements on the page
-            function mutePage() {
-              document.querySelectorAll("video").forEach( video => muteMe(video) );
-              document.querySelectorAll("audio").forEach( audio => muteMe(audio) );
-            }
-            window.addEventListener('load', () => {
-              if(document.querySelector(".continue_button_inner") || document.querySelector('button.ytp-large-play-button.ytp-button')){
-                if(document.querySelector(".airy-play-toggle-hint.airy-hint.airy-play-hint")){
-                  document.querySelector(".airy-play-toggle-hint.airy-hint.airy-play-hint").click()
-                  mutePage();
-                }
-                if (document.querySelector('button.ytp-large-play-button.ytp-button')) {
-                  document.querySelector('button.ytp-large-play-button.ytp-button').click();
-                  mutePage();
-                }
-                setTimeout(enterGiveaway, 15000)
+          // Mute a singular HTML5 element
+          function muteMe(elem) {
+            elem.muted = true;
+          }
+          // Try to mute all video and audio elements on the page
+          function mutePage() {
+            document.querySelectorAll("video").forEach( video => muteMe(video) );
+            document.querySelectorAll("audio").forEach( audio => muteMe(audio) );
+          }
+          window.addEventListener('load', () => {
+            if(document.querySelector(".continue_button_inner") || document.querySelector('button.ytp-large-play-button.ytp-button')){
+              if(document.querySelector(".airy-play-toggle-hint.airy-hint.airy-play-hint")){
+                document.querySelector(".airy-play-toggle-hint.airy-hint.airy-play-hint").click()
+                mutePage();
               }
-            }, false);
-          }
-          else {
-            processGiveaways()
-          }
+              if (document.querySelector('button.ytp-large-play-button.ytp-button')) {
+                document.querySelector('button.ytp-large-play-button.ytp-button').click();
+                mutePage();
+              }
+              setTimeout(enterGiveaway, 15000)
+            }
+          }, false);
         }
         // if giveaway has no requirements, enter it
         else {
