@@ -2,7 +2,7 @@
 //
 // ==UserScript==
 // @name         Amazon Giveaway Bot
-// @version      1.2
+// @version      2.0
 // @author       Ryan Walker
 // @updateURL    https://github.com/RyanPWalker/amazon-giveaway-automator/raw/master/amazonGiveawayAutomator.user.js
 // @description  Automates Amazon giveaway entries
@@ -40,6 +40,41 @@
   }
 
   if(!GM_getValue("running")){
+      function dragElement(elmnt) {
+          var pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+          elmnt.onmousedown = dragMouseDown;
+
+          function dragMouseDown(e) {
+              e = e || window.event;
+              e.preventDefault();
+              // get the mouse cursor position at startup:
+              pos3 = e.clientX;
+              pos4 = e.clientY;
+              document.onmouseup = closeDragElement;
+              // call a function whenever the cursor moves:
+              document.onmousemove = elementDrag;
+          }
+
+          function elementDrag(e) {
+              e = e || window.event;
+              e.preventDefault();
+              // calculate the new cursor position:
+              pos1 = pos3 - e.clientX;
+              pos2 = pos4 - e.clientY;
+              pos3 = e.clientX;
+              pos4 = e.clientY;
+              // set the element's new position:
+              elmnt.style.top = (elmnt.offsetTop - pos2) + "px";
+              elmnt.style.left = (elmnt.offsetLeft - pos1) + "px";
+          }
+
+          function closeDragElement() {
+              /* stop moving when mouse button is released:*/
+              document.onmouseup = null;
+              document.onmousemove = null;
+          }
+      }
+
     // wrapped this in a page load event handler since it would execute before page loaded
     document.addEventListener("DOMContentLoaded", function(event) {
         var newHTML = document.createElement('div');
@@ -49,6 +84,7 @@
         newHTML.style.zIndex = 9999;
         newHTML.innerHTML = mytemplate["controls.html"];
         document.body.appendChild(newHTML);
+        dragElement(newHTML);
         document.getElementById("run").style.display = (GM_getValue("running") ? 'none' : 'block');
         document.getElementById("disable").style.display = (GM_getValue("running") ? 'block' : 'none');
         document.getElementById("currentSessionGiveawaysEntered").style.display = (GM_getValue("running") ? 'block' : 'none');
@@ -123,10 +159,6 @@
 
   async function processGiveaways() {
     console.log('Processing giveaways');
-    // fallback to refresh if it gets stuck
-    setTimeout(function() {
-        location.reload();
-    }, 30000);
     GM_setValue("processingGiveaways", true)
     let idx = GM_getValue("currentIdx");
     let currentGiveaway = JSON.parse(GM_getValue(`giveaway-${idx}`))
@@ -153,6 +185,8 @@
     numEntered += 1
     GM_setValue("currentSessionGiveawaysEntered", numEntered);
 
+    // fix for repeated call to handleSubmit()
+    let alreadyWon = false;
     setInterval( () => {
       // if giveaway has video requirement, click the continue entry button first
       if((document.getElementById("giveaway-video-watch-text") || (document.getElementById("giveaway-youtube-video-watch-text") && !document.querySelector(".continue_button_inner").disabled))){
@@ -163,8 +197,10 @@
       else if (document.getElementById('en_fo_follow-announce')) {
         processGiveaways()
       }
+      // enter subscription giveaways
       else if (document.getElementById('ne_sub_subscribe-announce')) {
         document.querySelector('input.a-button-input').click();
+        handleSubmit();
       }
       // otherwise, enter giveaway immediately
       else {
@@ -174,6 +210,7 @@
           }
           if(document.querySelector(".boxClickTarget")){
             document.querySelector(".boxClickTarget").click()
+            alreadyWon = true;
             handleSubmit();
           }
           // TODO: verify handler for subscribe giveaways
@@ -184,11 +221,21 @@
             }
           }
           // If it's something we've already won, move on
-          if(document.getElementById('title')){
+          if(document.getElementById('title') && !alreadyWon){
             handleSubmit();
+          }
+          if (document.querySelector('#giveaway-eni-container')) {
+              if (document.querySelector('#giveaway-eni-container').innerHTML.includes('cannot win another')) {
+                  processGiveaways();
+              }
           }
       }
     }, 1000)
+    // fallback to refresh if it gets stuck
+    setTimeout(function() {
+        console.log("refreshing");
+        location.reload();
+    }, 20000);
   }
 
   // check page until results show up then continue to next giveaway in queue if not a winner
@@ -213,11 +260,81 @@
     if(GM_getValue("running")){
       if(isSignIn){
         setInterval(() => {
-            if (document.querySelector(".a-row.a-color-base")) {
-                document.querySelector(".a-row.a-color-base").click();
-            }
-            if (document.querySelector("input#signInSubmit.a-button-input")) {
-                document.querySelector("input#signInSubmit.a-button-input").click();
+            // Bug fix for Chrome's autofill not filing until you click on something
+            if (document.querySelector("input#ap_password.a-input-text.a-span12.auth-autofocus.auth-required-field")) {
+                console.log('simulating mouse click');
+                function simulate(element, eventName) {
+                    var options = extend(defaultOptions, arguments[2] || {});
+                    var oEvent, eventType = null;
+
+                    for (var name in eventMatchers) {
+                        if (eventMatchers[name].test(eventName)) { eventType = name; break; }
+                    }
+
+                    if (!eventType)
+                        throw new SyntaxError('Only HTMLEvents and MouseEvents interfaces are supported');
+
+                    if (document.createEvent) {
+                        oEvent = document.createEvent(eventType);
+                        if (eventType == 'HTMLEvents') {
+                            oEvent.initEvent(eventName, options.bubbles, options.cancelable);
+                        }
+                        else {
+                            oEvent.initMouseEvent(eventName, options.bubbles, options.cancelable, document.defaultView,
+                                                  options.button, options.pointerX, options.pointerY, options.pointerX, options.pointerY,
+                                                  options.ctrlKey, options.altKey, options.shiftKey, options.metaKey, options.button, element);
+                        }
+                        element.dispatchEvent(oEvent);
+                    } else {
+                        options.clientX = options.pointerX;
+                        options.clientY = options.pointerY;
+                        var evt = document.createEventObject();
+                        oEvent = extend(evt, options);
+                        element.fireEvent('on' + eventName, oEvent);
+                    }
+
+                    if (document.querySelector(".a-row.a-color-base")) {
+                        document.querySelector(".a-row.a-color-base").click();
+                    }
+                    if (document.querySelector("input#signInSubmit.a-button-input")) {
+                        document.querySelector("input#signInSubmit.a-button-input").click();
+                    }
+
+                    return element;
+                }
+
+                function extend(destination, source) {
+                    for (var property in source)
+                        destination[property] = source[property];
+                    return destination;
+                }
+
+                var eventMatchers = {
+                    'HTMLEvents': /^(?:load|unload|abort|error|select|change|submit|reset|focus|blur|resize|scroll)$/,
+                    'MouseEvents': /^(?:click|dblclick|mouse(?:down|up|over|move|out))$/
+                }
+                var defaultOptions = {
+                    pointerX: 0,
+                    pointerY: 0,
+                    button: 0,
+                    ctrlKey: false,
+                    altKey: false,
+                    shiftKey: false,
+                    metaKey: false,
+                    bubbles: true,
+                    cancelable: true
+                }
+                simulate(document.getElementById("ap_password"), "click");
+                //document.querySelector("input#ap_password.a-input-text.a-span12.auth-autofocus.auth-required-field").focus();
+                //document.querySelector("input#ap_password.a-input-text.a-span12.auth-autofocus.auth-required-field").click();
+            } else {
+                console.log("else");
+                if (document.querySelector(".a-row.a-color-base")) {
+                    document.querySelector(".a-row.a-color-base").click();
+                }
+                if (document.querySelector("input#signInSubmit.a-button-input")) {
+                    document.querySelector("input#signInSubmit.a-button-input").click();
+                }
             }
         }, 5000)
       } else if(isMainPage){
@@ -254,6 +371,7 @@
         }
         // handle giveaways with video requirement
         else if (document.getElementById("giveaway-youtube-video-watch-text") || document.getElementById("giveaway-video-watch-text") || document.getElementById('enter-youtube-video-button')){
+          console.log('Playing video.');
           // Mute a singular HTML5 element
           function muteMe(elem) {
             elem.muted = true;
@@ -264,7 +382,8 @@
             document.querySelectorAll("audio").forEach( audio => muteMe(audio) );
           }
           window.addEventListener('load', () => {
-            if(document.querySelector(".continue_button_inner") || document.querySelector('button.ytp-large-play-button.ytp-button')){
+            if(document.querySelector(".continue_button_inner") || document.querySelector('button.ytp-large-play-button.ytp-button') || document.querySelector("div.airy-play-toggle-hint.airy-hint.airy-play-hint")){
+              console.log('clicking play');
               if(document.querySelector(".airy-play-toggle-hint.airy-hint.airy-play-hint")){
                 document.querySelector(".airy-play-toggle-hint.airy-hint.airy-play-hint").click()
                 mutePage();
@@ -272,6 +391,10 @@
               if (document.querySelector('button.ytp-large-play-button.ytp-button')) {
                 document.querySelector('button.ytp-large-play-button.ytp-button').click();
                 mutePage();
+              }
+              if (document.querySelector("div.airy-play-toggle-hint.airy-hint.airy-play-hint")) {
+                  document.querySelector("div.airy-play-toggle-hint.airy-hint.airy-play-hint").click();
+                  mutePage();
               }
               setTimeout(enterGiveaway, 15000)
             }
